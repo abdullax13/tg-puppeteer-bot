@@ -107,6 +107,11 @@ app.get("/ad", (req, res) => {
         <title>Advertisement</title>
         <script>
           let seconds = 5;
+
+          function openAd() {
+            window.open("${AD_LINK}", "_blank");
+          }
+
           function countdown() {
             if (seconds <= 0) {
               document.getElementById("continue").style.display = "block";
@@ -116,13 +121,15 @@ app.get("/ad", (req, res) => {
             seconds--;
             setTimeout(countdown, 1000);
           }
-          window.onload = countdown;
+
+          window.onload = function() {
+            openAd();
+            countdown();
+          };
         </script>
       </head>
       <body style="text-align:center;font-family:sans-serif;">
         <h2>يرجى الانتظار <span id="timer">5</span> ثواني...</h2>
-
-        <iframe src="${https://omg10.com/4/10621000}" width="100%" height="400"></iframe>
 
         <div id="continue" style="display:none;margin-top:20px;">
           <a href="/verify?user=${user}&token=${token}">
