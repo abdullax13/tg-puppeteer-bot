@@ -138,8 +138,43 @@ app.get("/app", (req, res) => {
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
 </head>
+<style>
+body{
+  background:#0f172a;
+  color:white;
+  font-family:Arial;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  margin:0;
+}
+h2{
+  margin-bottom:20px;
+}
+input{
+  width:85%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  margin-bottom:15px;
+  font-size:16px;
+}
+button{
+  width:85%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+  background:#3b82f6;
+  color:white;
+}
+</style>
 <body>
+
 <h2>تنزيل فيديو من TikTok</h2>
+
 <input id="url" placeholder="ألصق رابط TikTok هنا">
 <button onclick="startProcess()">تحميل</button>
 
