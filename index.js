@@ -43,17 +43,12 @@ function hasFreeAccess(userId) {
 bot.start((ctx) => {
   uniqueUsers.add(ctx.from.id);
 
-  ctx.reply(
-    "👇 اضغط على زر تحميل الفيديو لفتح الصفحة",
-    {
-      reply_markup: {
-        keyboard: [
-          [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
-        ],
-        resize_keyboard: true
-      }
-    }
-  );
+  ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
+    reply_markup: {
+      keyboard: [[{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]],
+      resize_keyboard: true,
+    },
+  });
 });
 
 // =========================
@@ -65,8 +60,8 @@ bot.command("stats", (ctx) => {
 
   ctx.reply(
     `📊 احصائيات البوت\n\n` +
-    `👥 المستخدمين الكلي: ${uniqueUsers.size}\n` +
-    `🛡 النشطين حالياً: ${getActiveUsers()}`
+      `👥 المستخدمين الكلي: ${uniqueUsers.size}\n` +
+      `🛡 النشطين حالياً: ${getActiveUsers()}`
   );
 });
 
@@ -89,7 +84,6 @@ function getActiveUsers() {
 // =========================
 
 bot.on("text", async (ctx) => {
-
   if (ctx.message.text.startsWith("/")) return;
 
   uniqueUsers.add(ctx.from.id);
@@ -105,25 +99,17 @@ bot.on("text", async (ctx) => {
     return downloadVideo(userId, text);
   }
 
-  const msg = await ctx.reply(
-    "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "🎥 مشاهدة الإعلان",
-              web_app: { url: `${BASE_URL}/ad` }   // 🔥 تم التصحيح هنا
-            }
-          ]
-        ]
-      }
-    }
-  );
+  const msg = await ctx.reply("🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🎥 مشاهدة الإعلان", web_app: { url: `${BASE_URL}/ad` } }],
+      ],
+    },
+  });
 
   pendingDownloads.set(userId, {
     url: text,
-    messageId: msg.message_id
+    messageId: msg.message_id,
   });
 });
 
@@ -143,14 +129,13 @@ async function downloadVideo(userId, url) {
     if (videoUrl) {
       await bot.telegram.sendVideo(userId, videoUrl);
     }
-
   } catch (e) {
     console.log(e.message);
   }
 }
 
 // =========================
-// صفحة تحميل مستقلة (للزر السفلي)
+// صفحة التحميل (Mini App الرئيسية)
 // =========================
 
 app.get("/app", (req, res) => {
@@ -161,22 +146,49 @@ app.get("/app", (req, res) => {
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
 <style>
-body{background:#0f172a;color:white;font-family:Arial;
-display:flex;flex-direction:column;justify-content:center;
-align-items:center;height:100vh;margin:0}
-input{width:85%;padding:15px;border-radius:10px;border:none;margin-bottom:15px;font-size:16px}
-button{width:85%;padding:15px;border-radius:10px;border:none;font-size:16px;background:#3b82f6;color:white}
+body{
+  background:#0f172a;
+  color:white;
+  font-family:Arial;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  margin:0;
+}
+input{
+  width:85%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  margin-bottom:15px;
+  font-size:16px;
+}
+button{
+  width:85%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+  background:#3b82f6;
+  color:white;
+}
 </style>
 </head>
+
 <body>
+
 <h2>تنزيل فيديو من TikTok</h2>
+
 <input id="url" placeholder="ألصق رابط TikTok هنا">
-<button onclick="start()">تحميل</button>
+<button onclick="startProcess()">تحميل</button>
+
 <script>
 const tg = Telegram.WebApp;
 tg.expand();
 
-async function start(){
+async function startProcess(){
   const url = document.getElementById("url").value;
   if(!url.includes("tiktok.com")){
     alert("رابط غير صحيح");
@@ -189,16 +201,17 @@ async function start(){
   const data = await check.json();
 
   if(data.hasAccess){
-      fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
+      await fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
       tg.close();
   }else{
-      show_10620995().then(() => {
-          fetch("/activate-from-page?user_id=" + userId + "&url=" + encodeURIComponent(url))
-          .then(()=> tg.close());
+      show_10620995().then(async () => {
+          await fetch("/activate-from-page?user_id=" + userId + "&url=" + encodeURIComponent(url));
+          tg.close();
       });
   }
 }
 </script>
+
 </body>
 </html>`);
 });
@@ -234,7 +247,7 @@ show_10620995().then(() => {
 // فحص
 // =========================
 
-app.get("/check-access", (req,res)=>{
+app.get("/check-access", (req, res) => {
   const userId = Number(req.query.user_id);
   res.json({ hasAccess: hasFreeAccess(userId) });
 });
@@ -243,41 +256,45 @@ app.get("/check-access", (req,res)=>{
 // تحميل مباشر
 // =========================
 
-app.get("/direct-download", async (req,res)=>{
+app.get("/direct-download", async (req, res) => {
   const userId = Number(req.query.user_id);
   const url = req.query.url;
+
   await downloadVideo(userId, url);
   res.send("ok");
 });
 
 // =========================
-// تفعيل بعد إعلان الرسائل
+// تفعيل بعد إعلان الرسائل + حذف رسالة الإعلان
 // =========================
 
-app.get("/activate-from-message", async (req,res)=>{
+app.get("/activate-from-message", async (req, res) => {
   const userId = Number(req.query.user_id);
-  if(!userId) return res.send("error");
+  if (!userId) return res.send("error");
 
   userSessions.set(userId, { lastAdView: Date.now() });
 
   const data = pendingDownloads.get(userId);
-  if(!data) return res.send("ok");
+  if (!data) return res.send("ok");
 
   await downloadVideo(userId, data.url);
+
+  // 🔥 حذف رسالة "مشاهدة الإعلان" بعد ما يخلص
+  await bot.telegram.deleteMessage(userId, data.messageId).catch(() => {});
 
   pendingDownloads.delete(userId);
   res.send("ok");
 });
 
 // =========================
-// تفعيل بعد إعلان صفحة التحميل
+// تفعيل من صفحة التحميل
 // =========================
 
-app.get("/activate-from-page", async (req,res)=>{
+app.get("/activate-from-page", async (req, res) => {
   const userId = Number(req.query.user_id);
   const url = req.query.url;
 
-  if(!userId || !url) return res.send("error");
+  if (!userId || !url) return res.send("error");
 
   userSessions.set(userId, { lastAdView: Date.now() });
   await downloadVideo(userId, url);
