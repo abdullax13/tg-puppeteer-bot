@@ -41,8 +41,8 @@ function hasFreeAccess(userId) {
 // =========================
 
 bot.start((ctx) => {
-  uniqueUsers.add(ctx.from.id);
-  ctx.reply("ارسل رابط تيك توك لتحميل الفيديو 🎬");
+  ctx.reply("Your Telegram ID: " + ctx.from.id);
+});
 });
 
 bot.on("text", async (ctx) => {
