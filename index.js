@@ -1,102 +1,85 @@
 import express from "express";
 import axios from "axios";
 import { Telegraf } from "telegraf";
+import Redis from "ioredis";
 
 const app = express();
 app.use(express.json());
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
+const REDIS_URL = process.env.REDIS_URL;
 
-if (!BOT_TOKEN || !BASE_URL) {
-  console.error("Missing BOT_TOKEN or BASE_URL");
+if (!BOT_TOKEN || !BASE_URL || !REDIS_URL) {
+  console.error("Missing environment variables");
   process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
+const redis = new Redis(REDIS_URL);
+
+const FREE_PERIOD = 30 * 60; // 30 دقيقة بالثواني
+const ADMIN_ID = 8287143547;
 
 // =========================
 // 📊 الإحصائيات
 // =========================
 
-const uniqueUsers = new Set();
-const ADMIN_ID = 8287143547;
-
-// =========================
-// الجلسات
-// =========================
-
-const userSessions = new Map();
-const pendingDownloads = new Map();
-const FREE_PERIOD = 30 * 60 * 1000;
-
-function hasFreeAccess(userId) {
-  const session = userSessions.get(userId);
-  if (!session) return false;
-  return Date.now() - session.lastAdView < FREE_PERIOD;
-}
-
-// =========================
-// أوامر
-// =========================
-
-bot.start((ctx) => {
-  uniqueUsers.add(ctx.from.id);
-
-  ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
-    ]
-  }
-});
-});
-
-// =========================
-// 📊 إحصائيات
-// =========================
-
-bot.command("stats", (ctx) => {
+bot.command("stats", async (ctx) => {
   if (ctx.from.id !== ADMIN_ID) return;
+
+  const total = await redis.scard("users");
+  const active = await redis.keys("session:*");
 
   ctx.reply(
     `📊 احصائيات البوت\n\n` +
-      `👥 المستخدمين الكلي: ${uniqueUsers.size}\n` +
-      `🛡 النشطين حالياً: ${getActiveUsers()}`
+    `👥 المستخدمين الكلي: ${total}\n` +
+    `🛡 النشطين حالياً: ${active.length}`
   );
 });
 
-bot.command("active", (ctx) => {
+bot.command("active", async (ctx) => {
   if (ctx.from.id !== ADMIN_ID) return;
-  ctx.reply(`🛡 النشطين حالياً: ${getActiveUsers()}`);
+
+  const active = await redis.keys("session:*");
+  ctx.reply(`🛡 النشطين حالياً: ${active.length}`);
 });
 
-function getActiveUsers() {
-  let active = 0;
-  const now = Date.now();
-  for (const session of userSessions.values()) {
-    if (now - session.lastAdView < FREE_PERIOD) active++;
-  }
-  return active;
-}
+// =========================
+// /start
+// =========================
+
+bot.start(async (ctx) => {
+  await redis.sadd("users", ctx.from.id);
+
+  ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
+      ]
+    }
+  });
+});
 
 // =========================
-// استقبال الروابط في الدردشة
+// استقبال الروابط
 // =========================
 
 bot.on("text", async (ctx) => {
   if (ctx.message.text.startsWith("/")) return;
 
-  uniqueUsers.add(ctx.from.id);
-
-  const text = ctx.message.text;
   const userId = ctx.from.id;
+  const text = ctx.message.text;
+
+  await redis.sadd("users", userId);
 
   if (!text.includes("tiktok.com")) {
     return ctx.reply("ارسل رابط تيك توك صحيح.");
   }
 
-  if (hasFreeAccess(userId)) {
+  const hasAccess = await redis.get(`session:${userId}`);
+
+  if (hasAccess) {
     return downloadVideo(userId, text);
   }
 
@@ -105,16 +88,21 @@ bot.on("text", async (ctx) => {
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🎥 مشاهدة الإعلان", web_app: { url: `${BASE_URL}/ad` } }],
-        ],
-      },
+          [{ text: "🎥 مشاهدة الإعلان", web_app: { url: `${BASE_URL}/ad` } }]
+        ]
+      }
     }
   );
 
-  pendingDownloads.set(userId, {
-    url: text,
-    messageId: msg.message_id,
-  });
+  await redis.set(
+    `pending:${userId}`,
+    JSON.stringify({
+      url: text,
+      messageId: msg.message_id
+    }),
+    "EX",
+    600 // 10 دقائق
+  );
 });
 
 // =========================
@@ -149,41 +137,9 @@ app.get("/app", (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
-<style>
-body{
-  background:#0f172a;
-  color:white;
-  font-family:Arial;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-  margin:0;
-}
-input{
-  width:85%;
-  padding:15px;
-  border-radius:10px;
-  border:none;
-  margin-bottom:15px;
-  font-size:16px;
-}
-button{
-  width:85%;
-  padding:15px;
-  border-radius:10px;
-  border:none;
-  font-size:16px;
-  background:#3b82f6;
-  color:white;
-}
-</style>
 </head>
 <body>
-
 <h2>تنزيل فيديو من TikTok</h2>
-
 <input id="url" placeholder="ألصق رابط TikTok هنا">
 <button onclick="startProcess()">تحميل</button>
 
@@ -198,12 +154,6 @@ if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
 tg.expand();
 
 async function startProcess(){
-
-  if(!tg.initDataUnsafe || !tg.initDataUnsafe.user){
-    alert("يرجى فتح الصفحة من داخل البوت مباشرة.");
-    return;
-  }
-
   const url = document.getElementById("url").value;
   if(!url.includes("tiktok.com")){
     alert("رابط غير صحيح");
@@ -226,7 +176,6 @@ async function startProcess(){
   }
 }
 </script>
-
 </body>
 </html>`);
 });
@@ -262,9 +211,10 @@ show_10620995().then(() => {
 // API
 // =========================
 
-app.get("/check-access", (req, res) => {
+app.get("/check-access", async (req, res) => {
   const userId = Number(req.query.user_id);
-  res.json({ hasAccess: hasFreeAccess(userId) });
+  const session = await redis.get(`session:${userId}`);
+  res.json({ hasAccess: !!session });
 });
 
 app.get("/direct-download", async (req, res) => {
@@ -278,15 +228,18 @@ app.get("/activate-from-message", async (req, res) => {
   const userId = Number(req.query.user_id);
   if (!userId) return res.send("error");
 
-  userSessions.set(userId, { lastAdView: Date.now() });
+  await redis.set(`session:${userId}`, "1", "EX", FREE_PERIOD);
 
-  const data = pendingDownloads.get(userId);
-  if (!data) return res.send("ok");
+  const pending = await redis.get(`pending:${userId}`);
+  if (!pending) return res.send("ok");
+
+  const data = JSON.parse(pending);
 
   await downloadVideo(userId, data.url);
   await bot.telegram.deleteMessage(userId, data.messageId).catch(()=>{});
 
-  pendingDownloads.delete(userId);
+  await redis.del(`pending:${userId}`);
+
   res.send("ok");
 });
 
@@ -296,7 +249,7 @@ app.get("/activate-from-page", async (req, res) => {
 
   if (!userId || !url) return res.send("error");
 
-  userSessions.set(userId, { lastAdView: Date.now() });
+  await redis.set(`session:${userId}`, "1", "EX", FREE_PERIOD);
   await downloadVideo(userId, url);
 
   res.send("ok");
