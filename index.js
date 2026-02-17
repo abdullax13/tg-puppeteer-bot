@@ -44,13 +44,12 @@ bot.start((ctx) => {
   uniqueUsers.add(ctx.from.id);
 
   ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
-    reply_markup: {
-      inline_keyboard: [
-  [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
-],
-      resize_keyboard: true,
-    },
-  });
+  reply_markup: {
+    inline_keyboard: [
+      [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
+    ]
+  }
+});
 });
 
 // =========================
