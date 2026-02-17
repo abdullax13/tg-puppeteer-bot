@@ -43,7 +43,6 @@ function hasFreeAccess(userId) {
 bot.start((ctx) => {
   ctx.reply("Your Telegram ID: " + ctx.from.id);
 });
-});
 
 bot.on("text", async (ctx) => {
 
