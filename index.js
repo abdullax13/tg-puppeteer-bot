@@ -102,45 +102,82 @@ app.get("/ad", (req, res) => {
   }
 
   res.send(`
-    <html>
-      <head>
-        <title>Advertisement</title>
-        <script>
-          let seconds = 5;
+  <html>
+  <head>
+    <title>Advertisement</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        text-align:center;
+        font-family: Arial, sans-serif;
+        background:#f2f2f2;
+        padding:40px;
+      }
+      .box {
+        background:white;
+        padding:30px;
+        border-radius:10px;
+        max-width:400px;
+        margin:auto;
+        box-shadow:0 4px 10px rgba(0,0,0,0.1);
+      }
+      button {
+        padding:12px 20px;
+        border:none;
+        border-radius:6px;
+        font-size:16px;
+        cursor:pointer;
+      }
+      .adbtn {
+        background:#ff9800;
+        color:white;
+      }
+      .continue {
+        background:#4CAF50;
+        color:white;
+        display:none;
+        margin-top:15px;
+      }
+    </style>
+    <script>
+      let seconds = 5;
 
-          function openAd() {
-            window.open("${AD_LINK}", "_blank");
-          }
+      function openAd(){
+        window.open("https://omg10.com/4/10621000", "_blank");
+      }
 
-          function countdown() {
-            if (seconds <= 0) {
-              document.getElementById("continue").style.display = "block";
-              return;
-            }
-            document.getElementById("timer").innerText = seconds;
-            seconds--;
-            setTimeout(countdown, 1000);
-          }
+      function countdown() {
+        if (seconds <= 0) {
+          document.getElementById("continueBtn").style.display = "inline-block";
+          return;
+        }
+        document.getElementById("timer").innerText = seconds;
+        seconds--;
+        setTimeout(countdown, 1000);
+      }
 
-          window.onload = function() {
-            openAd();
-            countdown();
-          };
-        </script>
-      </head>
-      <body style="text-align:center;font-family:sans-serif;">
-        <h2>يرجى الانتظار <span id="timer">5</span> ثواني...</h2>
+      window.onload = countdown;
+    </script>
+  </head>
+  <body>
+    <div class="box">
+      <h2>🔔 شاهد إعلان قصير</h2>
+      <p>سيتم تفعيل التحميل بعد <span id="timer">5</span> ثواني</p>
 
-        <div id="continue" style="display:none;margin-top:20px;">
-          <a href="/verify?user=${user}&token=${token}">
-            <button style="padding:10px 20px;">متابعة التحميل</button>
-          </a>
-        </div>
-      </body>
-    </html>
+      <button class="adbtn" onclick="openAd()">فتح الإعلان</button>
+
+      <br><br>
+
+      <a href="/verify?user=${user}&token=${token}">
+        <button id="continueBtn" class="continue">
+          متابعة التحميل
+        </button>
+      </a>
+    </div>
+  </body>
+  </html>
   `);
 });
-
 // التحقق بعد الإعلان
 app.get("/verify", async (req, res) => {
   const { user, token } = req.query;
