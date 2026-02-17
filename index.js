@@ -45,9 +45,9 @@ bot.start((ctx) => {
 
   ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
     reply_markup: {
-      keyboard: [
-        [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
-      ],
+      inline_keyboard: [
+  [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
+],
       resize_keyboard: true,
     },
   });
@@ -189,7 +189,13 @@ button{
 <button onclick="startProcess()">تحميل</button>
 
 <script>
-const tg = Telegram.WebApp;
+const tg = window.Telegram?.WebApp;
+
+if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
+  alert("يرجى فتح الصفحة من داخل البوت مباشرة.");
+  throw new Error("WebApp not opened correctly");
+}
+
 tg.expand();
 
 async function startProcess(){
