@@ -1,6 +1,6 @@
 import express from "express";
+import axios from "axios";
 import { Telegraf } from "telegraf";
-import puppeteer from "puppeteer";
 
 const app = express();
 app.use(express.json());
@@ -15,66 +15,57 @@ if (!BOT_TOKEN || !BASE_URL) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// ---------- أوامر البوت ----------
-
 bot.start((ctx) => {
-  ctx.reply("شغال ✅\nاكتب /pp عشان نختبر Puppeteer.");
+  ctx.reply("ارسل رابط تيك توك لتحميل الفيديو 🎬");
 });
 
-bot.command("pp", async (ctx) => {
-  ctx.reply("...جاري اختبار Puppeteer");
+bot.on("text", async (ctx) => {
+  const text = ctx.message.text;
 
-  let browser;
+  if (!text.includes("tiktok.com")) {
+    return ctx.reply("ارسل رابط تيك توك صحيح.");
+  }
 
   try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
+    await ctx.reply("جاري التحميل ⏳");
 
-    const page = await browser.newPage();
-    await page.goto("https://example.com", {
-      waitUntil: "domcontentloaded",
-      timeout: 60000
-    });
+    const response = await axios.get(
+      `https://www.tikwm.com/api/?url=${encodeURIComponent(text)}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0"
+        }
+      }
+    );
 
-    const title = await page.title();
+    const videoUrl = response.data?.data?.play;
 
-    await ctx.reply(`Puppeteer OK ✅\nTitle: ${title}`);
-  } catch (err) {
-    console.error(err);
-    await ctx.reply(`Puppeteer FAILED ❌\n${err.message}`);
-  } finally {
-    if (browser) {
-      await browser.close();
+    if (!videoUrl) {
+      return ctx.reply("تعذر تحميل الفيديو.");
     }
+
+    await ctx.replyWithVideo(videoUrl);
+
+  } catch (error) {
+    console.error(error.message);
+    ctx.reply("حدث خطأ أثناء التحميل.");
   }
 });
-
-// ---------- Webhook ----------
 
 app.post("/webhook", (req, res) => {
   bot.handleUpdate(req.body);
   res.sendStatus(200);
 });
 
-// ---------- Health check ----------
-
 app.get("/", (req, res) => {
-  res.send("OK");
+  res.send("Bot is running");
 });
 
-// ---------- تشغيل السيرفر ----------
-
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, async () => {
-  console.log(`Listening on ${PORT}`);
+  console.log(`Server running on ${PORT}`);
 
-  try {
-    await bot.telegram.setWebhook(`${BASE_URL}/webhook`);
-    console.log(`Webhook set: ${BASE_URL}/webhook`);
-  } catch (err) {
-    console.error("Failed to set webhook:", err.message);
-  }
+  await bot.telegram.setWebhook(`${BASE_URL}/webhook`);
+  console.log("Webhook set");
 });
