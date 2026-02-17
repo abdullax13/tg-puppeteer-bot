@@ -8,7 +8,7 @@ app.use(express.json());
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
-const AD_LINK = "https://omg10.com/4/10621000"; // ضع رابط Monetag هنا
+const AD_LINK = "https://omg10.com/4/10621000"; 
 
 if (!BOT_TOKEN || !BASE_URL) {
   console.error("Missing BOT_TOKEN or BASE_URL");
@@ -26,7 +26,7 @@ const FREE_PERIOD = 3 * 60 * 60 * 1000;
 function hasFreeAccess(userId) {
   const session = userSessions.get(userId);
   if (!session) return false;
-  return Date.now() - session.lastAdView < FREE_PERIOD;
+  return session.lastAdView && (Date.now() - session.lastAdView < FREE_PERIOD);
 }
 
 function generateToken() {
@@ -49,7 +49,11 @@ bot.on("text", async (ctx) => {
   // تحقق من صلاحية المستخدم
   if (!hasFreeAccess(userId)) {
     const token = generateToken();
-    userSessions.set(userId, { token });
+
+    userSessions.set(userId, {
+      token,
+      requestedAt: Date.now()
+    });
 
     return ctx.reply(
       "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
@@ -92,93 +96,32 @@ bot.on("text", async (ctx) => {
   }
 });
 
-// صفحة الإعلان
+
+// ===============================
+// صفحة الإعلان (Redirect مباشر)
+// ===============================
 app.get("/ad", (req, res) => {
   const { user, token } = req.query;
+  const userId = Number(user);
 
-  const session = userSessions.get(Number(user));
+  const session = userSessions.get(userId);
+
   if (!session || session.token !== token) {
     return res.send("Invalid session");
   }
 
-  res.send(`
-  <html>
-  <head>
-    <title>Advertisement</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body {
-        text-align:center;
-        font-family: Arial, sans-serif;
-        background:#f2f2f2;
-        padding:40px;
-      }
-      .box {
-        background:white;
-        padding:30px;
-        border-radius:10px;
-        max-width:400px;
-        margin:auto;
-        box-shadow:0 4px 10px rgba(0,0,0,0.1);
-      }
-      button {
-        padding:12px 20px;
-        border:none;
-        border-radius:6px;
-        font-size:16px;
-        cursor:pointer;
-      }
-      .adbtn {
-        background:#ff9800;
-        color:white;
-      }
-      .continue {
-        background:#4CAF50;
-        color:white;
-        display:none;
-        margin-top:15px;
-      }
-    </style>
-    <script>
-      let seconds = 5;
+  // تسجيل وقت بدء مشاهدة الإعلان
+  session.adStart = Date.now();
+  userSessions.set(userId, session);
 
-      function openAd(){
-        window.open("https://omg10.com/4/10621000", "_blank");
-      }
-
-      function countdown() {
-        if (seconds <= 0) {
-          document.getElementById("continueBtn").style.display = "inline-block";
-          return;
-        }
-        document.getElementById("timer").innerText = seconds;
-        seconds--;
-        setTimeout(countdown, 1000);
-      }
-
-      window.onload = countdown;
-    </script>
-  </head>
-  <body>
-    <div class="box">
-      <h2>🔔 شاهد إعلان قصير</h2>
-      <p>سيتم تفعيل التحميل بعد <span id="timer">5</span> ثواني</p>
-
-      <button class="adbtn" onclick="openAd()">فتح الإعلان</button>
-
-      <br><br>
-
-      <a href="/verify?user=${user}&token=${token}">
-        <button id="continueBtn" class="continue">
-          متابعة التحميل
-        </button>
-      </a>
-    </div>
-  </body>
-  </html>
-  `);
+  // تحويل مباشر لرابط Monetag
+  return res.redirect(AD_LINK);
 });
+
+
+// ===============================
 // التحقق بعد الإعلان
+// ===============================
 app.get("/verify", async (req, res) => {
   const { user, token } = req.query;
   const userId = Number(user);
@@ -187,6 +130,11 @@ app.get("/verify", async (req, res) => {
 
   if (!session || session.token !== token) {
     return res.send("Verification failed");
+  }
+
+  // تحقق أن المستخدم قضى 8 ثواني على الأقل
+  if (!session.adStart || (Date.now() - session.adStart < 8000)) {
+    return res.send("يجب مشاهدة الإعلان أولاً.");
   }
 
   session.lastAdView = Date.now();
@@ -199,6 +147,7 @@ app.get("/verify", async (req, res) => {
 
   res.send("يمكنك العودة للبوت الآن.");
 });
+
 
 // Webhook
 app.post("/webhook", (req, res) => {
