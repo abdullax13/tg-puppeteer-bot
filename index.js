@@ -102,22 +102,109 @@ bot.on("text", async (ctx) => {
 // ===============================
 app.get("/ad", (req, res) => {
   const { user, token } = req.query;
-  const userId = Number(user);
 
-  const session = userSessions.get(userId);
-
+  const session = userSessions.get(Number(user));
   if (!session || session.token !== token) {
     return res.send("Invalid session");
   }
 
-  // تسجيل وقت بدء مشاهدة الإعلان
-  session.adStart = Date.now();
-  userSessions.set(userId, session);
+  res.send(`
+  <html>
+  <head>
+    <title>Advertisement</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin:0;
+        padding:0;
+        background:#000;
+        font-family:Arial;
+        overflow:hidden;
+      }
 
-  // تحويل مباشر لرابط Monetag
-  return res.redirect(AD_LINK);
+      #adContainer {
+        position:fixed;
+        top:0;
+        left:0;
+        width:100%;
+        height:100%;
+        background:#000;
+      }
+
+      iframe {
+        width:100%;
+        height:100%;
+        border:none;
+      }
+
+      #closeBtn {
+        position:fixed;
+        top:15px;
+        right:15px;
+        background:red;
+        color:white;
+        border:none;
+        border-radius:50%;
+        width:40px;
+        height:40px;
+        font-size:20px;
+        display:none;
+        cursor:pointer;
+        z-index:9999;
+      }
+
+      #counter {
+        position:fixed;
+        top:15px;
+        left:15px;
+        color:white;
+        font-size:18px;
+        background:rgba(0,0,0,0.5);
+        padding:5px 10px;
+        border-radius:6px;
+        z-index:9999;
+      }
+    </style>
+
+    <script>
+      let seconds = 5;
+
+      function countdown(){
+        if(seconds <= 0){
+          document.getElementById("counter").style.display = "none";
+          document.getElementById("closeBtn").style.display = "block";
+          return;
+        }
+
+        document.getElementById("counter").innerText = 
+          "يمكنك الإغلاق بعد " + seconds + " ثواني";
+
+        seconds--;
+        setTimeout(countdown,1000);
+      }
+
+      function closeAd(){
+        window.location.href = "/verify?user=${user}&token=${token}";
+      }
+
+      window.onload = countdown;
+    </script>
+  </head>
+
+  <body>
+
+    <div id="counter"></div>
+
+    <button id="closeBtn" onclick="closeAd()">X</button>
+
+    <div id="adContainer">
+      <iframe src="${AD_LINK}"></iframe>
+    </div>
+
+  </body>
+  </html>
+  `);
 });
-
 
 // ===============================
 // التحقق بعد الإعلان
