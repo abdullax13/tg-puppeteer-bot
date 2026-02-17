@@ -45,7 +45,9 @@ bot.start((ctx) => {
 
   ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
     reply_markup: {
-      keyboard: [[{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]],
+      keyboard: [
+        [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
+      ],
       resize_keyboard: true,
     },
   });
@@ -99,13 +101,16 @@ bot.on("text", async (ctx) => {
     return downloadVideo(userId, text);
   }
 
-  const msg = await ctx.reply("🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.", {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🎥 مشاهدة الإعلان", web_app: { url: `${BASE_URL}/ad` } }],
-      ],
-    },
-  });
+  const msg = await ctx.reply(
+    "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🎥 مشاهدة الإعلان", web_app: { url: `${BASE_URL}/ad` } }],
+        ],
+      },
+    }
+  );
 
   pendingDownloads.set(userId, {
     url: text,
@@ -135,7 +140,7 @@ async function downloadVideo(userId, url) {
 }
 
 // =========================
-// صفحة التحميل (Mini App الرئيسية)
+// صفحة التحميل (Mini App)
 // =========================
 
 app.get("/app", (req, res) => {
@@ -176,7 +181,6 @@ button{
 }
 </style>
 </head>
-
 <body>
 
 <h2>تنزيل فيديو من TikTok</h2>
@@ -189,6 +193,12 @@ const tg = Telegram.WebApp;
 tg.expand();
 
 async function startProcess(){
+
+  if(!tg.initDataUnsafe || !tg.initDataUnsafe.user){
+    alert("يرجى فتح الصفحة من داخل البوت مباشرة.");
+    return;
+  }
+
   const url = document.getElementById("url").value;
   if(!url.includes("tiktok.com")){
     alert("رابط غير صحيح");
@@ -217,7 +227,7 @@ async function startProcess(){
 });
 
 // =========================
-// صفحة إعلان خاصة بالرسائل فقط
+// صفحة إعلان الرسائل
 // =========================
 
 app.get("/ad", (req, res) => {
@@ -244,7 +254,7 @@ show_10620995().then(() => {
 });
 
 // =========================
-// فحص
+// API
 // =========================
 
 app.get("/check-access", (req, res) => {
@@ -252,21 +262,12 @@ app.get("/check-access", (req, res) => {
   res.json({ hasAccess: hasFreeAccess(userId) });
 });
 
-// =========================
-// تحميل مباشر
-// =========================
-
 app.get("/direct-download", async (req, res) => {
   const userId = Number(req.query.user_id);
   const url = req.query.url;
-
   await downloadVideo(userId, url);
   res.send("ok");
 });
-
-// =========================
-// تفعيل بعد إعلان الرسائل + حذف رسالة الإعلان
-// =========================
 
 app.get("/activate-from-message", async (req, res) => {
   const userId = Number(req.query.user_id);
@@ -278,17 +279,11 @@ app.get("/activate-from-message", async (req, res) => {
   if (!data) return res.send("ok");
 
   await downloadVideo(userId, data.url);
-
-  // 🔥 حذف رسالة "مشاهدة الإعلان" بعد ما يخلص
-  await bot.telegram.deleteMessage(userId, data.messageId).catch(() => {});
+  await bot.telegram.deleteMessage(userId, data.messageId).catch(()=>{});
 
   pendingDownloads.delete(userId);
   res.send("ok");
 });
-
-// =========================
-// تفعيل من صفحة التحميل
-// =========================
 
 app.get("/activate-from-page", async (req, res) => {
   const userId = Number(req.query.user_id);
