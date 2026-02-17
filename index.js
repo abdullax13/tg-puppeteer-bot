@@ -18,8 +18,8 @@ const bot = new Telegraf(BOT_TOKEN);
 // جلسات المستخدمين
 const userSessions = new Map();
 
-// مدة السماح 3 ساعات
-const FREE_PERIOD = 3 * 60 * 60 * 1000;
+// 🔥 مدة السماح 30 دقيقة بدل 3 ساعات
+const FREE_PERIOD = 30 * 60 * 1000;
 
 // تخزين رابط آخر طلبه المستخدم
 const pendingDownloads = new Map();
@@ -104,39 +104,34 @@ app.get("/app", (req, res) => {
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
 <style>
 body{
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-  font-family:Arial;
-}
-button{
-  padding:15px 25px;
-  font-size:16px;
-  border:none;
-  border-radius:8px;
-  background:#ff9800;
-  color:white;
+  margin:0;
+  background:black;
 }
 </style>
 </head>
 <body>
 
-<button onclick="startAd()">مشاهدة الإعلان</button>
-
 <script>
-function startAd(){
+
+window.onload = function() {
+
+  const tg = window.Telegram.WebApp;
+  tg.expand();
+
+  // 🔥 تشغيل الإعلان مباشرة بدون زر
   show_10620995().then(() => {
 
-    const userId = Telegram.WebApp.initDataUnsafe.user.id;
+    const userId = tg.initDataUnsafe.user.id;
 
     fetch("/postback?user_id=" + userId)
       .then(() => {
-        Telegram.WebApp.close();
+        tg.close(); // إغلاق تلقائي بعد انتهاء الإعلان
       });
 
   });
-}
+
+};
+
 </script>
 
 </body>
@@ -153,7 +148,7 @@ app.get("/postback", async (req, res) => {
 
   if (!userId) return res.send("error");
 
-  // تفعيل 3 ساعات
+  // تفعيل 30 دقيقة
   userSessions.set(userId, { lastAdView: Date.now() });
 
   const url = pendingDownloads.get(userId);
