@@ -18,7 +18,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // جلسات المستخدمين
 const userSessions = new Map();
 
-// 🔥 مدة السماح 30 دقيقة بدل 3 ساعات
+// 🔥 مدة السماح 30 دقيقة
 const FREE_PERIOD = 30 * 60 * 1000;
 
 // تخزين رابط آخر طلبه المستخدم
@@ -42,12 +42,10 @@ bot.on("text", async (ctx) => {
     return ctx.reply("ارسل رابط تيك توك صحيح.");
   }
 
-  // إذا لديه صلاحية
   if (hasFreeAccess(userId)) {
     return downloadVideo(ctx, text);
   }
 
-  // حفظ الرابط مؤقتاً
   pendingDownloads.set(userId, text);
 
   return ctx.reply(
@@ -102,35 +100,77 @@ app.get("/app", (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
+
 <style>
 body{
+  background:#0f172a;
+  color:white;
+  font-family:Arial;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
   margin:0;
-  background:black;
+}
+input{
+  width:85%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  margin-bottom:15px;
+  font-size:16px;
+}
+button{
+  width:85%;
+  padding:15px;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+  background:#3b82f6;
+  color:white;
 }
 </style>
 </head>
+
 <body>
+
+<h2>تنزيل فيديو من TikTok</h2>
+
+<input id="url" placeholder="ألصق رابط TikTok هنا">
+
+<button onclick="startProcess()">تحميل</button>
 
 <script>
 
-window.onload = function() {
+const tg = Telegram.WebApp;
+tg.expand();
 
-  const tg = window.Telegram.WebApp;
-  tg.expand();
+async function startProcess(){
 
-  // 🔥 تشغيل الإعلان مباشرة بدون زر
-  show_10620995().then(() => {
+  const url = document.getElementById("url").value;
+  if(!url.includes("tiktok.com")){
+    alert("رابط غير صحيح");
+    return;
+  }
 
-    const userId = tg.initDataUnsafe.user.id;
+  const userId = tg.initDataUnsafe.user.id;
 
-    fetch("/postback?user_id=" + userId)
-      .then(() => {
-        tg.close(); // إغلاق تلقائي بعد انتهاء الإعلان
+  const check = await fetch("/check-access?user_id=" + userId);
+  const data = await check.json();
+
+  if(data.hasAccess){
+      fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
+      tg.close();
+  }else{
+      show_10620995().then(() => {
+          fetch("/activate-access?user_id=" + userId + "&url=" + encodeURIComponent(url))
+          .then(()=>{
+              tg.close();
+          });
       });
-
-  });
-
-};
+  }
+}
 
 </script>
 
@@ -140,37 +180,70 @@ window.onload = function() {
 });
 
 //
-// ===== Postback =====
+// ===== فحص الحماية =====
 //
 
-app.get("/postback", async (req, res) => {
+app.get("/check-access", (req,res)=>{
   const userId = Number(req.query.user_id);
+  const hasAccessNow = hasFreeAccess(userId);
+  res.json({ hasAccess: hasAccessNow });
+});
 
-  if (!userId) return res.send("error");
+//
+// ===== تحميل مباشر =====
+//
 
-  // تفعيل 30 دقيقة
+app.get("/direct-download", async (req,res)=>{
+  const userId = Number(req.query.user_id);
+  const url = req.query.url;
+
+  if(!userId || !url) return res.send("error");
+
+  try{
+    const response = await axios.get(
+      \`https://www.tikwm.com/api/?url=\${encodeURIComponent(url)}\`,
+      { headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+
+    const videoUrl = response.data?.data?.play;
+
+    if(videoUrl){
+      await bot.telegram.sendVideo(userId, videoUrl);
+    }
+
+  }catch(e){
+    console.error(e.message);
+  }
+
+  res.send("ok");
+});
+
+//
+// ===== تفعيل الحماية بعد الإعلان =====
+//
+
+app.get("/activate-access", async (req,res)=>{
+  const userId = Number(req.query.user_id);
+  const url = req.query.url;
+
+  if(!userId || !url) return res.send("error");
+
   userSessions.set(userId, { lastAdView: Date.now() });
 
-  const url = pendingDownloads.get(userId);
+  try{
+    const response = await axios.get(
+      \`https://www.tikwm.com/api/?url=\${encodeURIComponent(url)}\`,
+      { headers: { "User-Agent": "Mozilla/5.0" } }
+    );
 
-  if (url) {
-    try {
-      const response = await axios.get(
-        `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
-        { headers: { "User-Agent": "Mozilla/5.0" } }
-      );
+    const videoUrl = response.data?.data?.play;
 
-      const videoUrl = response.data?.data?.play;
-
-      if (videoUrl) {
-        await bot.telegram.sendVideo(userId, videoUrl);
-      }
-
-      pendingDownloads.delete(userId);
-
-    } catch (err) {
-      console.error(err.message);
+    if(videoUrl){
+      await bot.telegram.sendVideo(userId, videoUrl);
     }
+
+  }catch(e){
+    console.error(e.message);
   }
 
   res.send("ok");
