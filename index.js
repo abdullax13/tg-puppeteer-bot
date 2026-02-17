@@ -1,14 +1,12 @@
 import express from "express";
 import axios from "axios";
 import { Telegraf } from "telegraf";
-import crypto from "crypto";
 
 const app = express();
 app.use(express.json());
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
-const AD_LINK = "https://omg10.com/4/10621000"; 
 
 if (!BOT_TOKEN || !BASE_URL) {
   console.error("Missing BOT_TOKEN or BASE_URL");
@@ -17,23 +15,21 @@ if (!BOT_TOKEN || !BASE_URL) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// تخزين مؤقت للجلسات
+// جلسات المستخدمين
 const userSessions = new Map();
 
-// مدة السماح بدون إعلان (3 ساعات)
+// مدة السماح 3 ساعات
 const FREE_PERIOD = 3 * 60 * 60 * 1000;
+
+// تخزين رابط آخر طلبه المستخدم
+const pendingDownloads = new Map();
 
 function hasFreeAccess(userId) {
   const session = userSessions.get(userId);
   if (!session) return false;
-  return session.lastAdView && (Date.now() - session.lastAdView < FREE_PERIOD);
+  return Date.now() - session.lastAdView < FREE_PERIOD;
 }
 
-function generateToken() {
-  return crypto.randomBytes(16).toString("hex");
-}
-
-// رسالة البداية
 bot.start((ctx) => {
   ctx.reply("ارسل رابط تيك توك لتحميل الفيديو 🎬");
 });
@@ -46,40 +42,38 @@ bot.on("text", async (ctx) => {
     return ctx.reply("ارسل رابط تيك توك صحيح.");
   }
 
-  // تحقق من صلاحية المستخدم
-  if (!hasFreeAccess(userId)) {
-    const token = generateToken();
-
-    userSessions.set(userId, {
-      token,
-      requestedAt: Date.now()
-    });
-
-    return ctx.reply(
-      "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🎥 مشاهدة الإعلان",
-                url: `${BASE_URL}/ad?user=${userId}&token=${token}`
-              }
-            ]
-          ]
-        }
-      }
-    );
+  // إذا لديه صلاحية
+  if (hasFreeAccess(userId)) {
+    return downloadVideo(ctx, text);
   }
 
+  // حفظ الرابط مؤقتاً
+  pendingDownloads.set(userId, text);
+
+  return ctx.reply(
+    "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🎥 مشاهدة الإعلان",
+              web_app: { url: `${BASE_URL}/app` }
+            }
+          ]
+        ]
+      }
+    }
+  );
+});
+
+async function downloadVideo(ctx, url) {
   try {
     await ctx.reply("جاري التحميل ⏳");
 
     const response = await axios.get(
-      `https://www.tikwm.com/api/?url=${encodeURIComponent(text)}`,
-      {
-        headers: { "User-Agent": "Mozilla/5.0" }
-      }
+      `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
+      { headers: { "User-Agent": "Mozilla/5.0" } }
     );
 
     const videoUrl = response.data?.data?.play;
@@ -94,149 +88,103 @@ bot.on("text", async (ctx) => {
     console.error(error.message);
     ctx.reply("حدث خطأ أثناء التحميل.");
   }
-});
+}
 
+//
+// ===== صفحة Mini App =====
+//
 
-// ===============================
-// صفحة الإعلان (Redirect مباشر)
-// ===============================
-app.get("/ad", (req, res) => {
-  const { user, token } = req.query;
-
-  const session = userSessions.get(Number(user));
-  if (!session || session.token !== token) {
-    return res.send("Invalid session");
-  }
-
+app.get("/app", (req, res) => {
   res.send(`
-  <html>
-  <head>
-    <title>Advertisement</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body {
-        margin:0;
-        padding:0;
-        background:#000;
-        font-family:Arial;
-        overflow:hidden;
-      }
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
+<style>
+body{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  font-family:Arial;
+}
+button{
+  padding:15px 25px;
+  font-size:16px;
+  border:none;
+  border-radius:8px;
+  background:#ff9800;
+  color:white;
+}
+</style>
+</head>
+<body>
 
-      #adContainer {
-        position:fixed;
-        top:0;
-        left:0;
-        width:100%;
-        height:100%;
-        background:#000;
-      }
+<button onclick="startAd()">مشاهدة الإعلان</button>
 
-      iframe {
-        width:100%;
-        height:100%;
-        border:none;
-      }
+<script>
+function startAd(){
+  show_10620995().then(() => {
 
-      #closeBtn {
-        position:fixed;
-        top:15px;
-        right:15px;
-        background:red;
-        color:white;
-        border:none;
-        border-radius:50%;
-        width:40px;
-        height:40px;
-        font-size:20px;
-        display:none;
-        cursor:pointer;
-        z-index:9999;
-      }
+    const userId = Telegram.WebApp.initDataUnsafe.user.id;
 
-      #counter {
-        position:fixed;
-        top:15px;
-        left:15px;
-        color:white;
-        font-size:18px;
-        background:rgba(0,0,0,0.5);
-        padding:5px 10px;
-        border-radius:6px;
-        z-index:9999;
-      }
-    </style>
+    fetch("/postback?user_id=" + userId)
+      .then(() => {
+        Telegram.WebApp.close();
+      });
 
-    <script>
-      let seconds = 5;
+  });
+}
+</script>
 
-      function countdown(){
-        if(seconds <= 0){
-          document.getElementById("counter").style.display = "none";
-          document.getElementById("closeBtn").style.display = "block";
-          return;
-        }
-
-        document.getElementById("counter").innerText = 
-          "يمكنك الإغلاق بعد " + seconds + " ثواني";
-
-        seconds--;
-        setTimeout(countdown,1000);
-      }
-
-      function closeAd(){
-        window.location.href = "/verify?user=${user}&token=${token}";
-      }
-
-      window.onload = countdown;
-    </script>
-  </head>
-
-  <body>
-
-    <div id="counter"></div>
-
-    <button id="closeBtn" onclick="closeAd()">X</button>
-
-    <div id="adContainer">
-      <iframe src="${AD_LINK}"></iframe>
-    </div>
-
-  </body>
-  </html>
+</body>
+</html>
   `);
 });
 
-// ===============================
-// التحقق بعد الإعلان
-// ===============================
-app.get("/verify", async (req, res) => {
-  const { user, token } = req.query;
-  const userId = Number(user);
+//
+// ===== Postback =====
+//
 
-  const session = userSessions.get(userId);
+app.get("/postback", async (req, res) => {
+  const userId = Number(req.query.user_id);
 
-  if (!session || session.token !== token) {
-    return res.send("Verification failed");
+  if (!userId) return res.send("error");
+
+  // تفعيل 3 ساعات
+  userSessions.set(userId, { lastAdView: Date.now() });
+
+  const url = pendingDownloads.get(userId);
+
+  if (url) {
+    try {
+      const response = await axios.get(
+        `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+
+      const videoUrl = response.data?.data?.play;
+
+      if (videoUrl) {
+        await bot.telegram.sendVideo(userId, videoUrl);
+      }
+
+      pendingDownloads.delete(userId);
+
+    } catch (err) {
+      console.error(err.message);
+    }
   }
 
-  // تحقق أن المستخدم قضى 8 ثواني على الأقل
-  if (!session.adStart || (Date.now() - session.adStart < 8000)) {
-    return res.send("يجب مشاهدة الإعلان أولاً.");
-  }
-
-  session.lastAdView = Date.now();
-  userSessions.set(userId, session);
-
-  await bot.telegram.sendMessage(
-    userId,
-    "✅ تم تفعيل التحميل لمدة 3 ساعات. يمكنك الآن إرسال الروابط."
-  );
-
-  res.send("يمكنك العودة للبوت الآن.");
+  res.send("ok");
 });
 
+//
+// ===== Webhook =====
+//
 
-// Webhook
 app.post("/webhook", (req, res) => {
   bot.handleUpdate(req.body);
   res.sendStatus(200);
@@ -249,7 +197,6 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, async () => {
-  console.log(`Server running on ${PORT}`);
+  console.log("Server running");
   await bot.telegram.setWebhook(`${BASE_URL}/webhook`);
-  console.log("Webhook set");
 });
