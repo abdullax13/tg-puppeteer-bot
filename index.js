@@ -85,7 +85,7 @@ function getActiveUsers() {
 }
 
 // =========================
-// استقبال الروابط
+// استقبال الروابط في الدردشة
 // =========================
 
 bot.on("text", async (ctx) => {
@@ -113,7 +113,7 @@ bot.on("text", async (ctx) => {
           [
             {
               text: "🎥 مشاهدة الإعلان",
-              web_app: { url: `${BASE_URL}/app?fromChat=1` }
+              web_app: { url: `${BASE_URL}/ad` }   // 🔥 تم التصحيح هنا
             }
           ]
         ]
@@ -128,7 +128,7 @@ bot.on("text", async (ctx) => {
 });
 
 // =========================
-// تحميل
+// تحميل الفيديو
 // =========================
 
 async function downloadVideo(userId, url) {
@@ -150,54 +150,33 @@ async function downloadVideo(userId, url) {
 }
 
 // =========================
-// Mini App
+// صفحة تحميل مستقلة (للزر السفلي)
 // =========================
 
 app.get("/app", (req, res) => {
-  res.send(`
-<!DOCTYPE html>
+  res.send(`<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
 <style>
-body{
-  background:#0f172a;
-  color:white;
-  font-family:Arial;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-}
-input,button{
-  width:85%;
-  padding:15px;
-  margin:10px;
-  border-radius:10px;
-  border:none;
-  font-size:16px;
-}
-button{
-  background:#3b82f6;
-  color:white;
-}
+body{background:#0f172a;color:white;font-family:Arial;
+display:flex;flex-direction:column;justify-content:center;
+align-items:center;height:100vh;margin:0}
+input{width:85%;padding:15px;border-radius:10px;border:none;margin-bottom:15px;font-size:16px}
+button{width:85%;padding:15px;border-radius:10px;border:none;font-size:16px;background:#3b82f6;color:white}
 </style>
 </head>
 <body>
-
 <h2>تنزيل فيديو من TikTok</h2>
 <input id="url" placeholder="ألصق رابط TikTok هنا">
-<button onclick="process()">تحميل</button>
-
+<button onclick="start()">تحميل</button>
 <script>
 const tg = Telegram.WebApp;
 tg.expand();
 
-async function process(){
-
+async function start(){
   const url = document.getElementById("url").value;
   if(!url.includes("tiktok.com")){
     alert("رابط غير صحيح");
@@ -210,20 +189,45 @@ async function process(){
   const data = await check.json();
 
   if(data.hasAccess){
-      fetch("/direct-download?user_id="+userId+"&url="+encodeURIComponent(url));
+      fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
       tg.close();
   }else{
-      show_10620995().then(()=>{
-          fetch("/activate-access?user_id="+userId+"&url="+encodeURIComponent(url))
+      show_10620995().then(() => {
+          fetch("/activate-from-page?user_id=" + userId + "&url=" + encodeURIComponent(url))
           .then(()=> tg.close());
       });
   }
 }
 </script>
-
 </body>
-</html>
-  `);
+</html>`);
+});
+
+// =========================
+// صفحة إعلان خاصة بالرسائل فقط
+// =========================
+
+app.get("/ad", (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
+</head>
+<body>
+<script>
+const tg = Telegram.WebApp;
+tg.expand();
+
+show_10620995().then(() => {
+    const userId = tg.initDataUnsafe.user.id;
+    fetch("/activate-from-message?user_id=" + userId)
+    .then(()=> tg.close());
+});
+</script>
+</body>
+</html>`);
 });
 
 // =========================
@@ -242,34 +246,41 @@ app.get("/check-access", (req,res)=>{
 app.get("/direct-download", async (req,res)=>{
   const userId = Number(req.query.user_id);
   const url = req.query.url;
-
   await downloadVideo(userId, url);
   res.send("ok");
 });
 
 // =========================
-// تفعيل بعد إعلان
+// تفعيل بعد إعلان الرسائل
 // =========================
 
-app.get("/activate-access", async (req,res)=>{
-
+app.get("/activate-from-message", async (req,res)=>{
   const userId = Number(req.query.user_id);
-  const url = req.query.url;
+  if(!userId) return res.send("error");
 
   userSessions.set(userId, { lastAdView: Date.now() });
 
-  const pending = pendingDownloads.get(userId);
+  const data = pendingDownloads.get(userId);
+  if(!data) return res.send("ok");
 
-  if(pending){
-      try{
-        await bot.telegram.deleteMessage(userId, pending.messageId);
-      }catch{}
+  await downloadVideo(userId, data.url);
 
-      await downloadVideo(userId, pending.url);
-      pendingDownloads.delete(userId);
-  }else{
-      await downloadVideo(userId, url);
-  }
+  pendingDownloads.delete(userId);
+  res.send("ok");
+});
+
+// =========================
+// تفعيل بعد إعلان صفحة التحميل
+// =========================
+
+app.get("/activate-from-page", async (req,res)=>{
+  const userId = Number(req.query.user_id);
+  const url = req.query.url;
+
+  if(!userId || !url) return res.send("error");
+
+  userSessions.set(userId, { lastAdView: Date.now() });
+  await downloadVideo(userId, url);
 
   res.send("ok");
 });
