@@ -18,11 +18,8 @@ const bot = new Telegraf(BOT_TOKEN);
 // جلسات المستخدمين
 const userSessions = new Map();
 
-// 🔥 مدة السماح 30 دقيقة
+// مدة الحماية 30 دقيقة
 const FREE_PERIOD = 30 * 60 * 1000;
-
-// تخزين رابط آخر طلبه المستخدم
-const pendingDownloads = new Map();
 
 function hasFreeAccess(userId) {
   const session = userSessions.get(userId);
@@ -31,24 +28,32 @@ function hasFreeAccess(userId) {
 }
 
 bot.start((ctx) => {
-  ctx.reply("ارسل رابط تيك توك لتحميل الفيديو 🎬");
+  ctx.reply("اضغط على زر تحميل الفيديو لفتح الصفحة 👇", {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "تحميل الفيديو",
+            web_app: { url: BASE_URL + "/app" }
+          }
+        ]
+      ]
+    }
+  });
 });
 
+// تحميل مباشر عند إرسال رابط في الدردشة
 bot.on("text", async (ctx) => {
   const text = ctx.message.text;
   const userId = ctx.from.id;
 
-  if (!text.includes("tiktok.com")) {
-    return ctx.reply("ارسل رابط تيك توك صحيح.");
-  }
+  if (!text.includes("tiktok.com")) return;
 
   if (hasFreeAccess(userId)) {
-    return downloadVideo(ctx, text);
+    return downloadVideo(userId, text);
   }
 
-  pendingDownloads.set(userId, text);
-
-  return ctx.reply(
+  ctx.reply(
     "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
     {
       reply_markup: {
@@ -56,7 +61,7 @@ bot.on("text", async (ctx) => {
           [
             {
               text: "🎥 مشاهدة الإعلان",
-              web_app: { url: `${BASE_URL}/app` }
+              web_app: { url: BASE_URL + "/app?url=" + encodeURIComponent(text) }
             }
           ]
         ]
@@ -65,26 +70,26 @@ bot.on("text", async (ctx) => {
   );
 });
 
-async function downloadVideo(ctx, url) {
+async function downloadVideo(userId, url) {
   try {
-    await ctx.reply("جاري التحميل ⏳");
+    await bot.telegram.sendMessage(userId, "جاري التحميل ⏳");
 
     const response = await axios.get(
-      `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
+      "https://www.tikwm.com/api/?url=" + encodeURIComponent(url),
       { headers: { "User-Agent": "Mozilla/5.0" } }
     );
 
     const videoUrl = response.data?.data?.play;
 
     if (!videoUrl) {
-      return ctx.reply("تعذر تحميل الفيديو.");
+      return bot.telegram.sendMessage(userId, "تعذر تحميل الفيديو.");
     }
 
-    await ctx.replyWithVideo(videoUrl);
+    await bot.telegram.sendVideo(userId, videoUrl);
 
   } catch (error) {
     console.error(error.message);
-    ctx.reply("حدث خطأ أثناء التحميل.");
+    bot.telegram.sendMessage(userId, "حدث خطأ أثناء التحميل.");
   }
 }
 
@@ -93,13 +98,14 @@ async function downloadVideo(ctx, url) {
 //
 
 app.get("/app", (req, res) => {
+
   res.send(`
 <!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
+<script src="//libtl.com/sdk.js" data-zone="10620995" data-sdk="show_10620995"></script>
 
 <style>
 body{
@@ -143,12 +149,13 @@ button{
 
 <script>
 
-const tg = Telegram.WebApp;
+const tg = window.Telegram.WebApp;
 tg.expand();
 
 async function startProcess(){
 
   const url = document.getElementById("url").value;
+
   if(!url.includes("tiktok.com")){
     alert("رابط غير صحيح");
     return;
@@ -160,14 +167,12 @@ async function startProcess(){
   const data = await check.json();
 
   if(data.hasAccess){
-      fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
+      await fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
       tg.close();
   }else{
-      show_10620995().then(() => {
-          fetch("/activate-access?user_id=" + userId + "&url=" + encodeURIComponent(url))
-          .then(()=>{
-              tg.close();
-          });
+      show_10620995().then(async () => {
+          await fetch("/activate-access?user_id=" + userId + "&url=" + encodeURIComponent(url));
+          tg.close();
       });
   }
 }
@@ -185,8 +190,7 @@ async function startProcess(){
 
 app.get("/check-access", (req,res)=>{
   const userId = Number(req.query.user_id);
-  const hasAccessNow = hasFreeAccess(userId);
-  res.json({ hasAccess: hasAccessNow });
+  res.json({ hasAccess: hasFreeAccess(userId) });
 });
 
 //
@@ -199,27 +203,12 @@ app.get("/direct-download", async (req,res)=>{
 
   if(!userId || !url) return res.send("error");
 
-  try{
-    const response = await axios.get(
-      \`https://www.tikwm.com/api/?url=\${encodeURIComponent(url)}\`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
-    );
-
-    const videoUrl = response.data?.data?.play;
-
-    if(videoUrl){
-      await bot.telegram.sendVideo(userId, videoUrl);
-    }
-
-  }catch(e){
-    console.error(e.message);
-  }
-
+  await downloadVideo(userId, url);
   res.send("ok");
 });
 
 //
-// ===== تفعيل الحماية بعد الإعلان =====
+// ===== تفعيل بعد الإعلان =====
 //
 
 app.get("/activate-access", async (req,res)=>{
@@ -230,21 +219,7 @@ app.get("/activate-access", async (req,res)=>{
 
   userSessions.set(userId, { lastAdView: Date.now() });
 
-  try{
-    const response = await axios.get(
-      \`https://www.tikwm.com/api/?url=\${encodeURIComponent(url)}\`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
-    );
-
-    const videoUrl = response.data?.data?.play;
-
-    if(videoUrl){
-      await bot.telegram.sendVideo(userId, videoUrl);
-    }
-
-  }catch(e){
-    console.error(e.message);
-  }
+  await downloadVideo(userId, url);
 
   res.send("ok");
 });
@@ -266,5 +241,5 @@ const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, async () => {
   console.log("Server running");
-  await bot.telegram.setWebhook(`${BASE_URL}/webhook`);
+  await bot.telegram.setWebhook(BASE_URL + "/webhook");
 });
