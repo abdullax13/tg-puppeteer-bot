@@ -28,14 +28,15 @@ bot.command("pp", async (ctx) => {
 
   try {
     browser = await puppeteer.launch({
-      headless: "new",
-      executablePath:
-        "/opt/render/.cache/puppeteer/chrome/linux-127.0.6533.88/chrome-linux64/chrome",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
 
     const page = await browser.newPage();
-    await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
+    await page.goto("https://example.com", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000
+    });
 
     const title = await page.title();
 
