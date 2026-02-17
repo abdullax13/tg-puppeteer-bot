@@ -20,7 +20,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // =========================
 
 const uniqueUsers = new Set(); // جميع المستخدمين
-const ADMIN_ID = YOUR_TELEGRAM_ID; // ضع ايديك هنا
+const ADMIN_ID = 8287143547; // ضع ايديك هنا
 
 // =========================
 // جلسات المستخدمين
