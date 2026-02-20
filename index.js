@@ -18,7 +18,9 @@ if (!BOT_TOKEN || !BASE_URL || !REDIS_URL) {
 const bot = new Telegraf(BOT_TOKEN);
 const redis = new Redis(REDIS_URL);
 
-const FREE_PERIOD = 30 * 60; // 30 دقيقة
+const FREE_PERIOD = 30 * 60; // 30 دقيقة للإعلان
+const REF_BONUS = 10 * 60;   // 10 دقائق لكل دعوة
+const DAILY_LIMIT = 10;      // حد يومي للدعوات
 const ADMIN_ID = 8287143547;
 
 // =========================
@@ -46,7 +48,48 @@ bot.command("active", async (ctx) => {
 });
 
 // =========================
-// /start + Referral System
+// عرض رصيد الدعوات
+// =========================
+
+bot.command("bonus", async (ctx) => {
+  const userId = ctx.from.id;
+  const bonus = await redis.get(`bonus:${userId}`);
+  const seconds = Number(bonus || 0);
+
+  if (seconds <= 0) {
+    return ctx.reply("❌ لا تملك دقائق دعوات حالياً.");
+  }
+
+  ctx.reply(`🎁 لديك ${Math.floor(seconds/60)} دقيقة جاهزة للتفعيل.\nاستخدم /activate_bonus لتفعيلها.`);
+});
+
+// =========================
+// تفعيل يدوي للمكافآت
+// =========================
+
+bot.command("activate_bonus", async (ctx) => {
+  const userId = ctx.from.id;
+  const bonus = Number(await redis.get(`bonus:${userId}`) || 0);
+
+  if (bonus <= 0) {
+    return ctx.reply("❌ لا يوجد رصيد دعوات لتفعيله.");
+  }
+
+  const currentTTL = await redis.ttl(`session:${userId}`);
+  let newTime = bonus;
+
+  if (currentTTL > 0) {
+    newTime += currentTTL;
+  }
+
+  await redis.set(`session:${userId}`, "1", "EX", newTime);
+  await redis.del(`bonus:${userId}`);
+
+  ctx.reply(`✅ تم تفعيل ${Math.floor(newTime/60)} دقيقة حماية.`);
+});
+
+// =========================
+// /start + نظام الدعوات الجديد
 // =========================
 
 bot.start(async (ctx) => {
@@ -61,13 +104,19 @@ bot.start(async (ctx) => {
     const refUserId = Number(referral);
 
     if (!isNaN(refUserId)) {
-      await redis.set(`session:${refUserId}`, "1", "EX", FREE_PERIOD);
+      const todayKey = `daily_ref:${refUserId}:${new Date().toISOString().slice(0,10)}`;
+      const todayCount = Number(await redis.get(todayKey) || 0);
 
-      await bot.telegram.sendMessage(
-        refUserId,
-        `🎉 قام مستخدم جديد بالدخول عبر رابطك!\n` +
-        `🛡 تم منحك 30 دقيقة حماية إضافية.`
-      ).catch(()=>{});
+      if (todayCount < DAILY_LIMIT) {
+        await redis.incrby(`bonus:${refUserId}`, REF_BONUS);
+        await redis.incr(todayKey);
+        await redis.expire(todayKey, 86400);
+
+        await bot.telegram.sendMessage(
+          refUserId,
+          `🎉 دعوة جديدة!\nتم إضافة 10 دقائق إلى رصيدك.\nاستخدم /bonus لعرض الرصيد.`
+        ).catch(()=>{});
+      }
     }
   }
 
@@ -157,39 +206,10 @@ app.get("/app", (req, res) => {
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src='//libtl.com/sdk.js' data-zone='10620995' data-sdk='show_10620995'></script>
 </head>
-<body style="background:#0f172a;color:white;font-family:Arial;text-align:center;padding-top:50px;">
-
-<h2>تنزيل فيديو من TikTok</h2>
-
-<input id="url" placeholder="ألصق رابط TikTok هنا" style="width:85%;padding:15px;border-radius:10px;border:none;margin-bottom:15px;font-size:16px;">
-<br>
-<button onclick="startProcess()" style="width:85%;padding:15px;border-radius:10px;border:none;font-size:16px;background:#3b82f6;color:white;">تحميل</button>
-
+<body>
 <script>
-const tg = window.Telegram?.WebApp;
+const tg = Telegram.WebApp;
 tg.expand();
-
-async function startProcess(){
-  const url = document.getElementById("url").value;
-  if(!url.includes("tiktok.com")){
-    alert("رابط غير صحيح");
-    return;
-  }
-
-  const userId = tg.initDataUnsafe.user.id;
-  const check = await fetch("/check-access?user_id=" + userId);
-  const data = await check.json();
-
-  if(data.hasAccess){
-      await fetch("/direct-download?user_id=" + userId + "&url=" + encodeURIComponent(url));
-      tg.close();
-  }else{
-      show_10620995().then(async () => {
-          await fetch("/activate-from-page?user_id=" + userId + "&url=" + encodeURIComponent(url));
-          tg.close();
-      });
-  }
-}
 </script>
 </body>
 </html>`);
@@ -250,37 +270,11 @@ app.get("/activate-from-message", async (req, res) => {
   await bot.telegram.sendMessage(
     userId,
     `🎉 لديك حماية 30 دقيقة!\n\n` +
-    `🚀 احصل على 30 دقيقة إضافية عند مشاركة البوت:\n${referralLink}`
+    `🚀 كل دعوة = 10 دقائق (حد يومي 10 دعوات)\n` +
+    `استخدم /bonus لرصيدك\n` +
+    `${referralLink}`
   ).catch(()=>{});
 
-  const pending = await redis.get(`pending:${userId}`);
-  if (!pending) return res.send("ok");
-
-  const data = JSON.parse(pending);
-
-  await downloadVideo(userId, data.url);
-  await bot.telegram.deleteMessage(userId, data.messageId).catch(()=>{});
-  await redis.del(`pending:${userId}`);
-
-  res.send("ok");
-});
-
-app.get("/activate-from-page", async (req, res) => {
-  const userId = Number(req.query.user_id);
-  const url = req.query.url;
-  if (!userId || !url) return res.send("error");
-
-  await redis.set(`session:${userId}`, "1", "EX", FREE_PERIOD);
-
-  const referralLink = `https://t.me/ViroTik_bot?start=${userId}`;
-
-  await bot.telegram.sendMessage(
-    userId,
-    `🎉 لديك حماية 30 دقيقة!\n\n` +
-    `🚀 احصل على 30 دقيقة إضافية عند مشاركة البوت:\n${referralLink}`
-  ).catch(()=>{});
-
-  await downloadVideo(userId, url);
   res.send("ok");
 });
 
